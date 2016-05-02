@@ -97,7 +97,6 @@ namespace XiEditor
 				// Just writing this as a helpful tip in case anyone ever needs to debug this line.
 				// BitConverter.ToUInt64(buffer, 0);
 				var usize = outHandle.ReadUInt64();
-				Console.WriteLine(usize);
 
 				var size = (int)usize;
 				var num_read = 0;
