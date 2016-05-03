@@ -1,114 +1,148 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace XiEditor
 {
 	class CoreConnection
 	{
-		BinaryReader outHandle;
-		BinaryWriter inHandle;
+		Stream inHandle;
 		byte[] recvBuf;
 		byte[] sizeBuf;
 		int rpcIndex;
 
-		public event EventHandler<string> DataReceived;
-		public event EventHandler<string> ErrorReceived;
-		public event EventHandler<EventArgs> ProcessExited;
+		Dictionary<int, Action<object>> pending;
 
-		public CoreConnection()
+		Action<object> callback;
+		
+		public event EventHandler ProcessExited;
+
+		public CoreConnection(string filename, Action<object> cb)
 		{
 			var myProcess = new Process();
 
 			sizeBuf = new byte[8];
 			recvBuf = new byte[65536];
 
+			pending = new Dictionary<int, Action<object>>();
+
 			rpcIndex = 0;
 
-			myProcess.StartInfo.FileName = "xicore.exe";
+			myProcess.StartInfo.FileName = filename;
 			myProcess.StartInfo.CreateNoWindow = true;
-			myProcess.StartInfo.RedirectStandardError = true;
-			myProcess.StartInfo.RedirectStandardOutput = true;
+
+			myProcess.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+			myProcess.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+
 			myProcess.StartInfo.RedirectStandardInput = true;
+			myProcess.StartInfo.RedirectStandardOutput = true;
+			myProcess.StartInfo.RedirectStandardError = true;
+
 			myProcess.StartInfo.UseShellExecute = false;
+
+			callback = cb;
 
 			// Gives us callback on exit
 			myProcess.EnableRaisingEvents = true;
 
-			myProcess.ErrorDataReceived += ErrorDataReceived;
-			myProcess.Exited += Exited;
+			myProcess.ErrorDataReceived += errHander;
+			myProcess.OutputDataReceived += recvHandler;
+			myProcess.Exited += ProcessExited;
 			myProcess.Start();
 			myProcess.BeginErrorReadLine();
-			inHandle = new BinaryWriter(myProcess.StandardInput.BaseStream);
-			outHandle = new BinaryReader(myProcess.StandardOutput.BaseStream);
-
-			Task.Factory.StartNew(() => ReceiveData());
+			myProcess.BeginOutputReadLine();
+			inHandle = myProcess.StandardInput.BaseStream;
 		}
-		
-		public void Send(string json)
+
+		private void recvHandler(object sender, DataReceivedEventArgs e)
+		{
+			handleRaw(e.Data);
+		}
+
+		private void handleRaw(string data)
+		{
+			try
+			{
+				var resp = JsonConvert.DeserializeObject(data);
+				if (!handleRpcResponse(resp))
+				{
+					callback(resp);
+				}
+			} catch (JsonSerializationException)
+			{
+				Console.WriteLine("json error");
+			}
+		}
+
+		private bool handleRpcResponse(object data)
+		{
+			dynamic resp = data;
+			if (resp["id"] != null)
+			{
+				var index = (int)resp["id"];
+				dynamic result = resp["result"];
+				var callback = null as Action<object>;
+				callback = pending[index];
+				pending.Remove(index);
+				callback(result);
+				return true;
+			} else
+			{
+				return false;
+			}
+		}
+
+		public void send(string json)
 		{
 			var data = Encoding.UTF8.GetBytes(json);
-			var length = (ulong)data.Length;
-			for (var i = 0; i < 8; i++)
-			{
-				sizeBuf[i] = (byte)(length >> (i * 8) & 0xff);
-			}
-			inHandle.Write(sizeBuf, 0, sizeBuf.Length);
 			inHandle.Write(data, 0, data.Length);
 			inHandle.Flush();
 		}
 
-		public void SendRpc(object data)
+		public void sendJson(object json)
 		{
-			var index = rpcIndex;
-			rpcIndex++;
-			var json = new object[] { "rpc", new object[] { new { index = index, request = data } } };
-			SendJson(json);
-		}
-
-		public void SendJson(object json)
-		{
-			string data = JsonConvert.SerializeObject(json);
-			Send(data);
+			string data = JsonConvert.SerializeObject(json) + '\n';
+			send(data);
 		}
 
 		private void Exited(object sender, EventArgs e)
 		{
-			ProcessExited?.Invoke(this, e);
+			throw new Exception("xicore.exe crashed");
 		}
 
-		private void ErrorDataReceived(object sender, DataReceivedEventArgs e)
+		private void errHander(object sender, DataReceivedEventArgs e)
 		{
-			ErrorReceived?.Invoke(this, e.ToString());
+			// Console.WriteLine(e.Data.ToString());
 		}
 
-		private void ReceiveData()
+		public void sendRpcAsync(string method, object parameters, Action<object> callback = null)
 		{
-			while (true)
+			
+			var req = new Dictionary<string, dynamic> { { "method", method }, { "params", parameters } };
+			if (callback != null)
 			{
-				// Here we pray to the gods of cs that the data is only ever properly formatted
-
-				// I wonder, what happens if the computer is slow?
-				// Should I use a while loop like below and wait until all 8 bytes are read, then convert?
-				// Is it possible that this function will ever break?
-				// Just writing this as a helpful tip in case anyone ever needs to debug this line.
-				// BitConverter.ToUInt64(buffer, 0);
-				var usize = outHandle.ReadUInt64();
-
-				var size = (int)usize;
-				var num_read = 0;
-				while (size - num_read != 0)
-				{
-					num_read += outHandle.Read(recvBuf, num_read, size - num_read);
-				}
-
-				var str = Encoding.UTF8.GetString(recvBuf, 0, size);
-
-				DataReceived?.Invoke(this, str);
+				req.Add("id",  rpcIndex);
+				var index = rpcIndex;
+				rpcIndex++;
+				pending.Add(index, callback);
 			}
+			sendJson(req);
+		}
+
+		public object sendRpc(string m, object p)
+		{
+			var result = null as object;
+			var e = new AutoResetEvent(false);
+			sendRpcAsync(m, p, delegate(object data) {
+				result = data;
+				e.Set();
+			});
+			e.WaitOne();
+			return result;
 		}
 	}
 }

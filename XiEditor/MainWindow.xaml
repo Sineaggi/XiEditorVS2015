@@ -20,6 +20,7 @@
         <ToolBar x:Name="toolBar" Margin="2,2,2,1.8" Grid.Row="0" Grid.ColumnSpan="2">
             <Button x:Name="openButton" Content="Open" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="openButton_Click"/>
             <Button x:Name="saveButton" Content="Save" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="saveButton_Click"/>
+            <Button x:Name="newtabButton" Content="New Tab" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="newtabButton_Click"/>
         </ToolBar>
         <local:CustomCanvas ClipToBounds="True" x:Name="textCanvas" Grid.Column="1" Margin="2,2,2,2" Grid.Row="1" />
     </Grid>

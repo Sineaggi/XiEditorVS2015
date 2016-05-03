@@ -23,13 +23,16 @@ namespace XiEditor
 		List<string> lineText = new List<string>();
 		StringBuilder sb = new StringBuilder();
 
+		string tabName;
+
 		public MainWindow()
 		{
 			InitializeComponent();
 
-			coreConnection = new CoreConnection();
-			coreConnection.DataReceived += HandleData;
-			coreConnection.ProcessExited += Process_Exited;
+			var filename = @"C:\Users\Clayton\Source\xi-editor\rust\target\debug\xicore.exe";
+			coreConnection = new CoreConnection(filename, delegate (object data) {
+				handleCoreCmd(data);
+			});
 
 			// Text ediitor using a text box
 			textBox.PreviewKeyDown += TextBox_PreviewKeyDown;
@@ -42,6 +45,32 @@ namespace XiEditor
 
 			// Windows has a differnt method for handling pasting than the rest of the inputs
 			DataObject.AddPastingHandler(textBox, TextBox_OnPaste);
+
+			tabName = (coreConnection.sendRpc("new_tab", new { }) as JValue).Value as string;
+		}
+
+		private void handleCoreCmd(object json)
+		{
+			dynamic obj = json;
+			if (obj["method"] != null)
+			{
+				var method = (string)obj["method"];
+				var parameters = obj["params"];
+				handleRpc(method, parameters);
+			} else
+			{
+				Console.WriteLine("unknown json from core: " + json);
+			}
+		}
+
+		private void handleRpc(string method, object parameters)
+		{
+			if (method.Equals("update"))
+			{
+				dynamic obj = parameters;
+				var update = obj["update"];
+				updateSafe(update);
+			}
 		}
 
 		private void TextCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -53,13 +82,8 @@ namespace XiEditor
 			int columns = (int)Math.Ceiling(e.NewSize.Width / width);
 			int rows = (int)Math.Ceiling(e.NewSize.Height / height);
 
-			var json = new object[] { "scroll", new object[] { 0, rows } };
-			coreConnection.SendJson(json);
-		}
-
-		private void HandleData(object sender, string e)
-		{
-			processData(e);
+			var json = new object[] { 0, rows };
+			// sendRpcAsync("scroll", json);
 		}
 
 		private void TextBox_DragEnter(object sender, DragEventArgs e)
@@ -70,8 +94,8 @@ namespace XiEditor
 
 			var text = e.Data.GetData(DataFormats.UnicodeText) as string;
 
-			var json = new object[] { "key", new { keycode = 0, chars = text, flags = 0 } };
-			coreConnection.SendJson(json);
+			var json = new { keycode = 0, chars = text, flags = 0 };
+			sendRpcAsync("key", json);
 		}
 
 		private void TextBox_PreviewMouseUp(object sender, MouseButtonEventArgs e)
@@ -101,8 +125,8 @@ namespace XiEditor
 
 			var col = Tools.getUTF8Cursor(str, index);
 
-			var json = new object[] { "click", new object[] { row, col, flags, num_clicks } };
-			coreConnection.SendJson(json);
+			var json = new object[] { row, col, flags, num_clicks };
+			sendRpcAsync("click", json);
 		}
 
 		private void TextBox_OnPaste(object sender, DataObjectPastingEventArgs e)
@@ -113,17 +137,22 @@ namespace XiEditor
 
 			var text = e.SourceDataObject.GetData(DataFormats.UnicodeText) as string;
 
-			var json = new object[] { "key", new { keycode = 0, chars = text, flags = 0 } };
-			coreConnection.SendJson(json);
+			var json = new { keycode = 0, chars = text, flags = 0 };
+			sendRpcAsync("key", json);
 		}
 
 		private void TextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
 		{
-			string x;
-			x = e.Text;
+			var text = e.Text;
+			var json = new { keycode = 0, chars = text, flags = 0 };
+			sendRpcAsync("key", json);
+		}
 
-			var json = new object[] { "key", new { keycode = 0, chars = x, flags = 0 } };
-			coreConnection.SendJson(json);
+		public void sendRpcAsync(string in_method, object in_params)
+		{
+			var req = new Dictionary<string, dynamic> { { "method", in_method }, { "params", in_params }, { "tab", tabName } };
+			// dispatch stuff
+			coreConnection.sendRpcAsync("edit", req);
 		}
 
 		private void TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -180,27 +209,12 @@ namespace XiEditor
 			{
 				flags ^= MODIFIER_SHIFT;
 			}
-
-			var json = new object[] { "key", new { keycode = 0, chars = x, flags = flags } };
-			coreConnection.SendJson(json);
-		}
-		
-		private void Process_Exited(object sender, EventArgs e)
-		{
-			Console.WriteLine("xi-editor exited");
-			// We managed to crash the core.
-			Dispatcher.Invoke(() =>
-			{
-				textBox.IsEnabled = false;
-			});
+			
+			var json = new { keycode = 0, chars = x, flags = flags };
+			sendRpcAsync("key", json);
 		}
 
-		private void MyProcess_ErrorDataReceived(object sender, DataReceivedEventArgs e)
-		{
-			// Console.WriteLine(e.Data);
-		}
-
-		private void processData(string json)
+		void updateSafe(object data)
 		{
 			// This is not a pretty function, but it works.
 			// It should be prettier with a better api
@@ -212,72 +226,54 @@ namespace XiEditor
 			lineText.Clear();
 			sb.Clear();
 
-			JArray arr = (JArray)JsonConvert.DeserializeObject(json);
-
-			foreach (var s in arr)
+			dynamic text = data;
+			var first_line = (int)text["first_line"];
+			var height = (int)text["height"];
+			var scrollto_x = (int)text["scrollto"][0];
+			var scrollto_y = (int)text["scrollto"][1];
+			var lines = (JArray)text["lines"];
+			for (int i = 0; i < lines.Count; i++)
 			{
-				switch (s.Type)
+				var lobe = (JArray)lines[i];
+				var textline = (string)lobe[0];
+				sb.Append(textline);
+				lineText.Add(textline);
+				for (int j = 1; j < lobe.Count; j++)
 				{
-					case JTokenType.String:
-						var text = (string)s;
-						break;
-					case JTokenType.Object:
-						var jobj = (JObject)s;
-						var first_line = (int)jobj["first_line"];
-						var height = (int)jobj["height"];
-						var scrolltop = (JArray)jobj["scrollto"];
-						int[] scrollto = new int[2];
-						for (int i = 0; i < scrolltop.Count; i++)
+					var extra = (JArray)lobe[j];
+					var typee = (string)extra[0];
+					if (typee.Equals("sel"))
+					{
+						found_sel = true;
+						sel_x += Tools.getUTF16Cursor(textline, (int)extra[1]);
+						sel_y += Tools.getUTF16Cursor(textline, (int)extra[2]);
+					}
+					else
+					{
+						if (!found_cursor)
 						{
-							scrollto[i] = (int)scrolltop[i];
-						}
-						var lines = (JArray)jobj["lines"];
-						for (int i = 0; i < lines.Count; i++)
-						{
-							var lobe = (JArray)lines[i];
-							var textline = (string)lobe[0];
-							sb.Append(textline);
-							lineText.Add(textline);
-							for (int j = 1; j < lobe.Count; j++)
+							if (typee.Equals("cursor"))
 							{
-								var extra = (JArray)lobe[j];
-								var typee = (string)extra[0];
-								if (typee.Equals("sel"))
-								{
-									found_sel = true;
-									sel_x += Tools.getUTF16Cursor(textline, (int)extra[1]);
-									sel_y += Tools.getUTF16Cursor(textline, (int)extra[2]);
-								} else
-								{
-									if (!found_cursor)
-									{
-										if (typee.Equals("cursor"))
-										{
-											found_cursor = true;
-											var cur_loc = (int)extra[1];
-											var new_cur_loc = Tools.getUTF16Cursor(textline, cur_loc);
-											cursor += new_cur_loc;
-										}
-									}
-								}
-								
-							}
-							if (!found_cursor)
-							{
-								cursor += textline.Length;
-							}
-							if (!found_sel)
-							{
-								sel_x += textline.Length;
-								sel_y += textline.Length;
+								found_cursor = true;
+								var cur_loc = (int)extra[1];
+								var new_cur_loc = Tools.getUTF16Cursor(textline, cur_loc);
+								cursor += new_cur_loc;
 							}
 						}
-						break;
-					default:
-						// Garbage
-						break;
+					}
+
+				}
+				if (!found_cursor)
+				{
+					cursor += textline.Length;
+				}
+				if (!found_sel)
+				{
+					sel_x += textline.Length;
+					sel_y += textline.Length;
 				}
 			}
+			
 			var stringText = sb.ToString();
 
 			Dispatcher.Invoke(() =>
@@ -306,15 +302,15 @@ namespace XiEditor
 				{
 					filepath = saveFileDialog.FileName;
 					var json = new[] { "save", filepath };
-					coreConnection.SendJson(json);
+					coreConnection.sendJson(json);
 				} else
 				{
 					return;
 				}
 			} else
 			{
-				var json = new[] { "save", filepath };
-				coreConnection.SendJson(json);
+				var json = new { filename = filepath };
+				sendRpcAsync("save", json);
 			}
 		}
 
@@ -324,9 +320,13 @@ namespace XiEditor
 			if (openFileDialog.ShowDialog() == true)
 			{
 				filepath = openFileDialog.FileName;
-				var json = new[] { "open", filepath };
-				coreConnection.SendJson(json);
+				sendRpcAsync("open", new { filename = filepath });
 			}
+		}
+
+		private void newtabButton_Click(object sender, RoutedEventArgs e)
+		{
+			tabName = (coreConnection.sendRpc("new_tab", new { }) as JValue).Value as string;
 		}
 	}
 }
