@@ -67,21 +67,20 @@ namespace XiEditor
 						// we start somewhere inside the string
 						var sub = text.Substring(0, line.sel[0]);
 						var startText = new FormattedText(sub, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black);
-						start_x = startText.Width;
+						start_x = startText.WidthIncludingTrailingWhitespace;
 					}
 
 					if (line.sel[1] == text.Length)
 					{
 						// we end at the end of the string
-						end_x = formattedLine.Width;
+						end_x = formattedLine.WidthIncludingTrailingWhitespace;
 					} else
 					{
 						// we end somewhere inside the string
 						var sub1 = text.Substring(0, line.sel[1]);
 						var startText = new FormattedText(sub1, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black);
-						end_x = startText.Width;
+						end_x = startText.WidthIncludingTrailingWhitespace;
 					}
-					// TODO: Render whitespace
 					// FIXME: Small lines visible inbetween highlight blocks
 					dc.DrawRectangle(HightlightBackground, null, new Rect(new Point(start_x, running_height), new Point(end_x, running_height + height)));
 					formattedLine.SetForegroundBrush(HighlightForeground, line.sel[0], line.sel[1] - line.sel[0]);
@@ -101,7 +100,7 @@ namespace XiEditor
 						// cursor is somewhere in the text
 						var sub = text.Substring(0, cursor);
 						var startText = new FormattedText(sub, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black);
-						cursor_x = startText.Width;
+						cursor_x = startText.WidthIncludingTrailingWhitespace;
 					}
 					// TODO: Keep consistant pixel width
 					// TODO: Add blink animation
