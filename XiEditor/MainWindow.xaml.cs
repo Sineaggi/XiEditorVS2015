@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -25,6 +26,16 @@ namespace XiEditor
 
 		string tabName;
 
+		private int firstLine = 0;
+		private int lastLine = 0;
+
+		private double ascent;
+		private double desent;
+		private double leading;
+		private double linespace;
+
+		//TextBox textBox;
+
 		public MainWindow()
 		{
 			InitializeComponent();
@@ -34,11 +45,19 @@ namespace XiEditor
 				handleCoreCmd(data);
 			});
 
+			//textBox = new TextBox();
+
 			// Text ediitor using a text box
 			textBox.PreviewKeyDown += TextBox_PreviewKeyDown;
 			textBox.PreviewTextInput += TextBox_PreviewTextInput;
 			textBox.PreviewMouseUp += TextBox_PreviewMouseUp;
 			textBox.DragEnter += TextBox_DragEnter;
+
+			//canvasScroller.
+			FormattedText someText = new FormattedText("A", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Consolas"), 12, Brushes.Red);
+			linespace = someText.Height;
+
+			scrollBar.Scroll += ScrollBar_Scroll;
 
 			// Text editor using a custom canvas
 			textCanvas.SizeChanged += TextCanvas_SizeChanged;
@@ -47,6 +66,11 @@ namespace XiEditor
 			DataObject.AddPastingHandler(textBox, TextBox_OnPaste);
 
 			tabName = (coreConnection.sendRpc("new_tab", new { }) as JValue).Value as string;
+		}
+
+		private void ScrollBar_Scroll(object sender, System.Windows.Controls.Primitives.ScrollEventArgs e)
+		{
+			textCanvas.ScrollTo = e.NewValue;
 		}
 
 		private void handleCoreCmd(object json)
@@ -75,15 +99,16 @@ namespace XiEditor
 
 		private void TextCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
 		{
-			Typeface tf = new Typeface("Consolas");
-			FormattedText someText = new FormattedText("A", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, tf, 12, Brushes.Red);
-			double width = someText.Width;
-			double height = someText.Height;
-			int columns = (int)Math.Ceiling(e.NewSize.Width / width);
-			int rows = (int)Math.Ceiling(e.NewSize.Height / height);
-
-			var json = new object[] { 0, rows };
-			// sendRpcAsync("scroll", json);
+			double origin_y = 0;
+			var first = (int)Math.Ceiling(origin_y / linespace);
+			var last = (int)Math.Ceiling(e.NewSize.Height / linespace);
+			
+			if (last != lastLine || first != firstLine)
+			{
+				lastLine = last;
+				var json = new object[] { firstLine, lastLine };
+				sendRpcAsync("scroll", json);
+			}
 		}
 
 		private void TextBox_DragEnter(object sender, DragEventArgs e)
@@ -160,6 +185,18 @@ namespace XiEditor
 			
 			int ech = KeyInterop.VirtualKeyFromKey(e.Key);
 
+			Key key = (e.Key == Key.System) ? e.SystemKey : e.Key;
+
+			if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl)
+			{
+
+			}
+
+			if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+			{
+
+			}
+
 			// She's a real beauty
 			char x;
 			switch (e.Key)
@@ -226,6 +263,8 @@ namespace XiEditor
 			lineText.Clear();
 			sb.Clear();
 
+			var listLines = new List<Line>();
+
 			dynamic text = data;
 			var first_line = (int)text["first_line"];
 			var height = (int)text["height"];
@@ -234,8 +273,10 @@ namespace XiEditor
 			var lines = (JArray)text["lines"];
 			for (int i = 0; i < lines.Count; i++)
 			{
+				var lark = new Line();
 				var lobe = (JArray)lines[i];
 				var textline = (string)lobe[0];
+				lark.line = (string)lobe[0];
 				sb.Append(textline);
 				lineText.Add(textline);
 				for (int j = 1; j < lobe.Count; j++)
@@ -247,6 +288,7 @@ namespace XiEditor
 						found_sel = true;
 						sel_x += Tools.getUTF16Cursor(textline, (int)extra[1]);
 						sel_y += Tools.getUTF16Cursor(textline, (int)extra[2]);
+						lark.sel = new int[] { (int)extra[1], (int)extra[2]};
 					}
 					else
 					{
@@ -257,6 +299,7 @@ namespace XiEditor
 								found_cursor = true;
 								var cur_loc = (int)extra[1];
 								var new_cur_loc = Tools.getUTF16Cursor(textline, cur_loc);
+								lark.cursor = new_cur_loc;
 								cursor += new_cur_loc;
 							}
 						}
@@ -272,6 +315,7 @@ namespace XiEditor
 					sel_x += textline.Length;
 					sel_y += textline.Length;
 				}
+				listLines.Add(lark);
 			}
 			
 			var stringText = sb.ToString();
@@ -279,8 +323,19 @@ namespace XiEditor
 			Dispatcher.Invoke(() =>
 			{
 				// Update test canvas
-				textCanvas.Text = stringText;
-				textCanvas.Update(stringText, cursor);
+				textCanvas.Lines = listLines;
+
+				// This logic works like so
+				// (viewPort / (max - min + viewPort) * track)
+				// By default, with one line, scrolling should be 1-1, meaning unable to scroll.
+				// With two lines, scrolling all the way down should cause only 1 line to be seen
+
+				// Update scroll bar
+				scrollBar.Minimum = 0;
+				scrollBar.Maximum = height;
+				//scrollBar.Value = first_line;
+				scrollBar.ViewportSize = textCanvas.ActualHeight/linespace;
+				//scrollBar.Track.Value = 0;
 
 				// Update text box
 				textBox.Text = stringText;

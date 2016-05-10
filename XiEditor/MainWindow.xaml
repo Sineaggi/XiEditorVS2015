@@ -7,21 +7,33 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="350" Width="525">
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition/>
-            <ColumnDefinition/>
-        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
         </Grid.RowDefinitions>
-        <TextBox x:Name="textBox" TextWrapping="NoWrap" Margin="2,2.2,2,2" FontFamily="Consolas" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="1"/>
+        <!--<TextBox x:Name="textBox" TextWrapping="NoWrap" Margin="2,2.2,2,2" FontFamily="Consolas" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="1"/>-->
         <!--FontFamily="InconsolataGo" FontSize="14" FontWeight="Bold"-->
-        <ToolBar x:Name="toolBar" Margin="2,2,2,1.8" Grid.Row="0" Grid.ColumnSpan="2">
-            <Button x:Name="openButton" Content="Open" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="openButton_Click"/>
-            <Button x:Name="saveButton" Content="Save" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="saveButton_Click"/>
-            <Button x:Name="newtabButton" Content="New Tab" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="newtabButton_Click"/>
-        </ToolBar>
-        <local:CustomCanvas ClipToBounds="True" x:Name="textCanvas" Grid.Column="1" Margin="2,2,2,2" Grid.Row="1" />
+
+        <ToolBarTray  Grid.Row="0">
+            <ToolBar ToolBarTray.IsLocked="True" Band="0" BandIndex="0" >
+                <Button x:Name="openButton" Content="Open" Click="openButton_Click"/>
+                <Button x:Name="saveButton" Content="Save" Click="saveButton_Click"/>
+                <Button x:Name="newtabButton" Content="New Tab" Click="newtabButton_Click"/>
+            </ToolBar>
+        </ToolBarTray>
+        <TabControl Grid.Row="1">
+            <TabItem Header="too" x:Name="tabItem">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="textBox" Grid.Column="0" FontFamily="Consolas" ScrollViewer.VerticalScrollBarVisibility="Visible"  TextWrapping="Wrap" Text="" />
+                    <local:CustomCanvas x:Name="textCanvas" Grid.Column="1" ClipToBounds="True" />
+                    <ScrollBar x:Name="scrollBar" Grid.Column="2" Minimum="0" Maximum="1" ViewportSize="1" Value="0" ></ScrollBar>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

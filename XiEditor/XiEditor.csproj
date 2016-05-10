@@ -61,6 +61,7 @@
     </ApplicationDefinition>
     <Compile Include="CoreConnection.cs" />
     <Compile Include="CustomCanvas.cs" />
+    <Compile Include="Line.cs" />
     <Compile Include="Tools.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
