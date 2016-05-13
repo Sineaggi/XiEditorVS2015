@@ -40,7 +40,29 @@ namespace XiEditor
 		{
 			InitializeComponent();
 
-			var filename = @"C:\Users\Clayton\Source\xi-editor\rust\target\debug\xicore.exe";
+
+            string filename = (string)Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\xieditor\", "path", null);
+            if (String.IsNullOrWhiteSpace(filename) )
+            {
+
+                OpenFileDialog xiEnginePicker = new OpenFileDialog();
+
+                xiEnginePicker.InitialDirectory = "c:\\";
+                xiEnginePicker.Filter = "xi-editor core (*.exe)|*.exe|All files (*.*)|*.*";
+                xiEnginePicker.Title = "Please select the xi-editor.exe in your rust > target directory.";
+
+                if (xiEnginePicker.ShowDialog() == true )
+                {
+                    filename = xiEnginePicker.FileName;
+                    Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\xieditor\", "path", filename );
+                } else
+                {
+                    System.Windows.MessageBox.Show("You must select a xi-editor core engine.");
+                    Environment.Exit(1);
+                }
+           }
+
+            // filename = @"C:\Users\Clayton\Source\xi-editor\rust\target\debug\xicore.exe";
 			coreConnection = new CoreConnection(filename, delegate (object data) {
 				handleCoreCmd(data);
 			});
