@@ -40,7 +40,7 @@ namespace XiEditor
 		{
 			InitializeComponent();
 
-			var filename = @"C:\Users\Clayton\Source\xi-editor\rust\target\debug\xicore.exe";
+			var filename = "xicore.exe";
 			coreConnection = new CoreConnection(filename, delegate (object data) {
 				handleCoreCmd(data);
 			});
